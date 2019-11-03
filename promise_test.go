@@ -1,6 +1,7 @@
 package promise
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -23,21 +24,21 @@ func TestPromise_Then(t *testing.T) {
 	})
 
 	promise.
-		Then(func(data interface{}) interface{} {
-			return data.(int) + 1
+		Then(func(data interface{}) (interface{}, error) {
+			return data.(int) + 1, nil
 		}).
-		Then(func(data interface{}) interface{} {
+		Then(func(data interface{}) (interface{}, error) {
 			if data.(int) != 3 {
 				t.Error("RESULT DOES NOT PROPAGATE")
 			}
-			return nil
+			return nil, nil
 		}).
-		Catch(func(err error) error {
+		Catch(func(err error) (interface{}, error) {
 			t.Error("CATCH TRIGGERED IN .THEN TEST")
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Then2(t *testing.T) {
@@ -48,18 +49,18 @@ func TestPromise_Then2(t *testing.T) {
 	})
 
 	promise.
-		Then(func(data interface{}) interface{} {
+		Then(func(data interface{}) (interface{}, error) {
 			if data.(string) != "Hello, World" {
 				t.Error("PROMISE DOESN'T FLATTEN")
 			}
-			return nil
+			return nil, nil
 		}).
-		Catch(func(err error) error {
+		Catch(func(err error) (interface{}, error) {
 			t.Error("CATCH TRIGGERED IN .THEN TEST")
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Then3(t *testing.T) {
@@ -70,12 +71,12 @@ func TestPromise_Then3(t *testing.T) {
 	})
 
 	promise.
-		Then(func(data interface{}) interface{} {
+		Then(func(data interface{}) (interface{}, error) {
 			t.Error("THEN TRIGGERED IN .CATCH TEST")
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Catch(t *testing.T) {
@@ -84,25 +85,25 @@ func TestPromise_Catch(t *testing.T) {
 	})
 
 	promise.
-		Catch(func(err error) error {
+		Catch(func(err error) (interface{}, error) {
 			if err.Error() == "very serious err" {
-				return errors.New("dealing with err at this stage")
+				return nil, errors.New("dealing with err at this stage")
 			}
-			return nil
+			return nil, nil
 		}).
-		Catch(func(err error) error {
+		Catch(func(err error) (interface{}, error) {
 			if err.Error() != "dealing with err at this stage" {
 				t.Error("ERROR DOES NOT PROPAGATE")
 			}
-			return nil
+			return nil, nil
 		})
 
-	promise.Then(func(data interface{}) interface{} {
+	promise.Then(func(data interface{}) (interface{}, error) {
 		t.Error("THEN TRIGGERED IN .CATCH TEST")
-		return nil
+		return nil, nil
 	})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Panic(t *testing.T) {
@@ -111,12 +112,12 @@ func TestPromise_Panic(t *testing.T) {
 	})
 
 	promise.
-		Then(func(data interface{}) interface{} {
+		Then(func(data interface{}) (interface{}, error) {
 			t.Error("THEN TRIGGERED IN .CATCH TEST")
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Await(t *testing.T) {
@@ -127,8 +128,8 @@ func TestPromise_Await(t *testing.T) {
 			resolve(time.Now())
 		})
 
-		promise.Then(func(data interface{}) interface{} {
-			return data.(time.Time).Add(time.Second).Nanosecond()
+		promise.Then(func(data interface{}) (interface{}, error) {
+			return data.(time.Time).Add(time.Second).Nanosecond(), nil
 		})
 
 		promises[x] = promise
@@ -138,19 +139,19 @@ func TestPromise_Await(t *testing.T) {
 	var promise2 = Reject(errors.New("fail"))
 
 	for _, p := range promises {
-		_, err := p.Await()
+		_, err := p.Await(context.Background())
 
 		if err != nil {
 			t.Error(err)
 		}
 	}
 
-	result, err := promise1.Await()
+	result, err := promise1.Await(context.Background())
 	if err != nil && result != "WinRAR" {
 		t.Error(err)
 	}
 
-	result, err = promise2.Await()
+	result, err = promise2.Await(context.Background())
 	if err == nil {
 		t.Error(err)
 	}
@@ -158,33 +159,33 @@ func TestPromise_Await(t *testing.T) {
 
 func TestPromise_Resolve(t *testing.T) {
 	var promise = Resolve(123).
-		Then(func(data interface{}) interface{} {
-			return data.(int) + 1
+		Then(func(data interface{}) (interface{}, error) {
+			return data.(int) + 1, nil
 		}).
-		Then(func(data interface{}) interface{} {
+		Then(func(data interface{}) (interface{}, error) {
 			t.Helper()
 			if data.(int) != 124 {
 				t.Errorf("THEN RESOLVED WITH UNEXPECTED VALUE: %v", data.(int))
 			}
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_Reject(t *testing.T) {
 	var promise = Reject(errors.New("rejected")).
-		Then(func(data interface{}) interface{} {
-			return data.(int) + 1
+		Then(func(data interface{}) (interface{}, error) {
+			return data.(int) + 1, nil
 		}).
-		Catch(func(err error) error {
+		Catch(func(err error) (interface{}, error) {
 			if err.Error() != "rejected" {
 				t.Errorf("CATCH REJECTED WITH UNEXPECTED VALUE: %v", err)
 			}
-			return nil
+			return nil, nil
 		})
 
-	promise.Await()
+	promise.Await(context.Background())
 }
 
 func TestPromise_All(t *testing.T) {
@@ -200,7 +201,7 @@ func TestPromise_All(t *testing.T) {
 	}
 
 	combined := All(promises...)
-	_, err := combined.Await()
+	_, err := combined.Await(context.Background())
 	if err == nil {
 		t.Error("Combined promise failed to return single err")
 	}
@@ -214,7 +215,7 @@ func TestPromise_All2(t *testing.T) {
 	}
 
 	combined := All(promises...)
-	result, err := combined.Await()
+	result, err := combined.Await(context.Background())
 	if err != nil {
 		t.Error(err)
 	} else {
@@ -225,7 +226,7 @@ func TestPromise_All2(t *testing.T) {
 				return
 			}
 			if res.(string) != s {
-				t.Error("Wrong index!")
+				t.Errorf("Wrong index (%v, %v)!", s, res)
 				return
 			}
 		}
@@ -236,7 +237,7 @@ func TestPromise_All3(t *testing.T) {
 	var promises []*Promise
 
 	combined := All(promises...)
-	result, err := combined.Await()
+	result, err := combined.Await(context.Background())
 
 	if err != nil {
 		t.Error(err)
@@ -252,10 +253,10 @@ func TestPromise_All3(t *testing.T) {
 
 func TestRace(t *testing.T) {
 	type RaceTestCase struct {
-		Name string
-		Promises []*Promise
+		Name           string
+		Promises       []*Promise
 		ExpectedResult interface{}
-		ExpectedError interface{}
+		ExpectedError  interface{}
 	}
 
 	FakeError := errors.New("FakeError")
@@ -265,44 +266,44 @@ func TestRace(t *testing.T) {
 
 	for _, tc := range []RaceTestCase{
 		{
-			Name: "No promises",
-			Promises: nil,
+			Name:           "No promises",
+			Promises:       nil,
 			ExpectedResult: nil,
-			ExpectedError: nil,
+			ExpectedError:  nil,
 		},
 		{
-			Name: "With one passing promise (99)",
-			Promises: []*Promise{Resolve(99)},
+			Name:           "With one passing promise (99)",
+			Promises:       []*Promise{Resolve(99)},
 			ExpectedResult: 99,
-			ExpectedError: nil,
+			ExpectedError:  nil,
 		},
 		{
-			Name: "With one passing promise (nil)",
-			Promises: []*Promise{Resolve(nil)},
+			Name:           "With one passing promise (nil)",
+			Promises:       []*Promise{Resolve(nil)},
 			ExpectedResult: nil,
-			ExpectedError: nil,
+			ExpectedError:  nil,
 		},
 		{
 			Name: "With multiple passing promises (a, b, c)",
 			Promises: []*Promise{
-				New(func (resolve func (interface{}), reject func (error)) {
+				New(func(resolve func(interface{}), reject func(error)) {
 					time.Sleep(time.Second)
 					resolve('b')
 				}),
 				Resolve('a'),
-				New(func (resolve func (interface{}), reject func (error)) {
+				New(func(resolve func(interface{}), reject func(error)) {
 					time.Sleep(time.Second)
 					resolve('c')
 				}),
 			},
 			ExpectedResult: 'a',
-			ExpectedError: nil,
+			ExpectedError:  nil,
 		},
 		{
-			Name: "With one failing promise (FakeError)",
-			Promises: []*Promise{Reject(FakeError)},
+			Name:           "With one failing promise (FakeError)",
+			Promises:       []*Promise{Reject(FakeError)},
 			ExpectedResult: nil,
-			ExpectedError: FakeError,
+			ExpectedError:  FakeError,
 		},
 		{
 			Name: "With multiple promises, and one failing (FakeError)",
@@ -318,25 +319,25 @@ func TestRace(t *testing.T) {
 				}),
 			},
 			ExpectedResult: nil,
-			ExpectedError: FakeError,
+			ExpectedError:  FakeError,
 		},
 		{
 			Name: "With multiple failing promise (FakeError2)",
 			Promises: []*Promise{
-				New(func (resolve func (interface{}), reject func (error)) {
+				New(func(resolve func(interface{}), reject func(error)) {
 					time.Sleep(time.Second)
 					reject(FakeError)
 				}),
-				New(func (resolve func (interface{}), reject func (error)) {
+				New(func(resolve func(interface{}), reject func(error)) {
 					reject(FakeError2)
 				}),
-				New(func (resolve func (interface{}), reject func (error)) {
+				New(func(resolve func(interface{}), reject func(error)) {
 					time.Sleep(time.Second)
 					reject(FakeError3)
 				}),
 			},
 			ExpectedResult: nil,
-			ExpectedError: FakeError2,
+			ExpectedError:  FakeError2,
 		},
 		{
 			Name: "With immediately rejecting promise",
@@ -358,13 +359,13 @@ func TestRace(t *testing.T) {
 				return promises
 			}(&BadPromiseError),
 			ExpectedResult: nil,
-			ExpectedError: BadPromiseError,
+			ExpectedError:  BadPromiseError,
 		},
 	} {
 		t.Run(tc.Name, func(t2 *testing.T) {
 			p := Race(tc.Promises...)
 
-			result, err := p.Await()
+			result, err := p.Await(context.Background())
 
 			t2.Logf("Promise result: result %v;  err %v", result, err)
 
@@ -383,7 +384,6 @@ func TestRace(t *testing.T) {
 			})
 		})
 	}
-
 }
 
 func TestAll(t *testing.T) {
@@ -490,7 +490,7 @@ func TestAll(t *testing.T) {
 	} {
 		t.Run(tc.Name, func(t2 *testing.T) {
 			p := All(tc.Promises...)
-			data, err := p.Await()
+			data, err := p.Await(context.Background())
 			var result []interface{}
 
 			switch data.(type) {
