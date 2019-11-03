@@ -3,6 +3,7 @@ package promise
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 )
 
@@ -100,8 +101,84 @@ func (promise *Promise) handlePanic() {
 	}
 }
 
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
+func deconstructArg(arg reflect.Value, callbackType reflect.Type) ([]reflect.Value, bool) {
+	if arg.Kind() != reflect.Slice || arg.Len() < callbackType.NumIn() {
+		return nil, false
+	}
+
+	args := make([]reflect.Value, callbackType.NumIn())
+	for i := 0; i < callbackType.NumIn(); i++ {
+		paramType := callbackType.In(i)
+
+		arg := arg.Index(i)
+		if arg.Kind() == reflect.Interface {
+			arg = arg.Elem()
+		}
+
+		if !arg.Type().ConvertibleTo(paramType) {
+			return nil, false
+		}
+		args[i] = arg.Convert(paramType)
+	}
+
+	return args, true
+}
+
+func checkCallback(callback interface{}) func(interface{}) (interface{}, error) {
+	callbackValue := reflect.ValueOf(callback)
+	callbackType := callbackValue.Type()
+	if callbackValue.Kind() != reflect.Func {
+		panic("callback must be a function that accepts one argument")
+	}
+	switch callbackType.NumOut() {
+	case 0, 1:
+		// OK
+	case 2:
+		if !callbackType.Out(1).ConvertibleTo(errorType) {
+			panic("callbacks that return two values must return a second value that is convertible to error")
+		}
+	default:
+		panic("callbacks must have 0, 1, or two return values")
+	}
+
+	return func(data interface{}) (interface{}, error) {
+		arg := reflect.ValueOf(data)
+		if arg.Kind() == reflect.Interface {
+			arg = arg.Elem()
+		}
+
+		args, deconstructed := deconstructArg(arg, callbackType)
+		if !deconstructed {
+			paramType := callbackType.In(0)
+			if paramType.Kind() == reflect.Slice && !arg.Type().ConvertibleTo(paramType) {
+				arrayArg := reflect.MakeSlice(paramType, arg.Len(), arg.Len())
+				for i := 0; i < arg.Len(); i++ {
+					arrayArg.Index(i).Set(arg.Index(i).Convert(paramType.Elem()))
+				}
+				arg = arrayArg
+			}
+			args = []reflect.Value{arg.Convert(paramType)}
+		}
+
+		result := callbackValue.Call(args)
+		switch len(result) {
+		case 0:
+			return nil, nil
+		case 1:
+			return result[0].Interface(), nil
+		default:
+			err, _ := result[1].Convert(errorType).Interface().(error)
+			return result[0].Interface(), err
+		}
+	}
+}
+
 // Then appends fulfillment handler to the Promise, and returns a new promise.
-func (promise *Promise) Then(fulfillment func(data interface{}) (interface{}, error)) *Promise {
+func (promise *Promise) Then(fulfillment interface{}) *Promise {
+	callback := checkCallback(fulfillment)
+
 	promise.mutex.Lock()
 
 	switch promise.state {
@@ -111,7 +188,7 @@ func (promise *Promise) Then(fulfillment func(data interface{}) (interface{}, er
 			if err != nil {
 				then.reject(err)
 			} else {
-				v, err := fulfillment(data)
+				v, err := callback(data)
 				if err != nil {
 					then.reject(err)
 				} else {
@@ -126,7 +203,7 @@ func (promise *Promise) Then(fulfillment func(data interface{}) (interface{}, er
 		promise.mutex.Unlock()
 
 		return New(func(resolve func(interface{}), reject func(error)) {
-			v, err := fulfillment(promise.result)
+			v, err := callback(promise.result)
 			if err != nil {
 				reject(err)
 			} else {
@@ -140,7 +217,9 @@ func (promise *Promise) Then(fulfillment func(data interface{}) (interface{}, er
 }
 
 // Catch appends a rejection handler callback to the Promise, and returns a new promise.
-func (promise *Promise) Catch(rejection func(err error) (interface{}, error)) *Promise {
+func (promise *Promise) Catch(rejection interface{}) *Promise {
+	callback := checkCallback(rejection)
+
 	promise.mutex.Lock()
 
 	switch promise.state {
@@ -150,7 +229,7 @@ func (promise *Promise) Catch(rejection func(err error) (interface{}, error)) *P
 			if err == nil {
 				then.resolve(data)
 			} else {
-				v, err := rejection(err)
+				v, err := callback(err)
 				if err != nil {
 					then.reject(err)
 				} else {
@@ -165,7 +244,7 @@ func (promise *Promise) Catch(rejection func(err error) (interface{}, error)) *P
 		promise.mutex.Unlock()
 
 		return New(func(resolve func(interface{}), reject func(error)) {
-			v, err := rejection(promise.err)
+			v, err := callback(promise.err)
 			if err != nil {
 				reject(err)
 			} else {
