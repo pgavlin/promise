@@ -57,6 +57,12 @@ func New(executor func(resolve func(interface{}), reject func(error))) *Promise 
 	return promise
 }
 
+// NewRaw returns a new promise and its resolver and rejector. Use this for promises that will not run promptly.
+func NewRaw() (*Promise, func(interface{}), func(error)) {
+	promise := newPromise()
+	return promise, promise.resolve, promise.reject
+}
+
 func (promise *Promise) fulfill(result interface{}, err error) {
 	promise.mutex.Lock()
 
